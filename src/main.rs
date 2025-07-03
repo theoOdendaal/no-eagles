@@ -1,6 +1,8 @@
 mod app;
+mod screens;
 
 use app::*;
+
 use leptos::prelude::*;
 
 fn main() {
