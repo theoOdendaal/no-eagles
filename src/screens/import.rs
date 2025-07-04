@@ -1,13 +1,13 @@
 use leptos::ev::{KeyboardEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::{Deserialize, Serialize};
+
 use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
 
 use thiserror::Error;
 
-use crate::app::AppState;
+use crate::app::{DirectoryArgs, FileConfiguration};
 
 #[wasm_bindgen]
 extern "C" {
@@ -21,18 +21,13 @@ pub enum ImportError {
     SerdeWasm(#[from] serde_wasm_bindgen::Error),
 }
 
-#[derive(Serialize, Deserialize)]
-struct DirectoryArgs<'a> {
-    directory: &'a str,
-}
-
 async fn fetch_current_directory() -> Result<String, ImportError> {
     /*
     let dir = invoke("get_current_directory", JsValue::NULL).await;
     let value = from_value::<String>(dir)?;
     Ok(value)
     */
-    // FIXME, im just manually setting the directory for now. In the future, the home directory should be changed in "Configuration".
+    // FIXME, im just manually setting the directory for now. In the future, the home directory can be changed by the user.
     Ok("C:/Users/TheoOdendaal/source/repos/no-eagles".to_string())
 }
 
@@ -45,7 +40,15 @@ async fn fetch_eligible_files(directory: &str) -> Result<Vec<String>, ImportErro
 
 #[component]
 pub fn ImportScreen() -> impl IntoView {
-    let state = use_context::<AppState>().expect("Could not retrieve state.");
+    //Auto focus on the input box when screen is mounted.
+    let input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    Effect::new(move |_| {
+        if let Some(input) = input_ref.get() {
+            input.focus().unwrap();
+        }
+    });
+
+    let state = use_context::<FileConfiguration>().expect("Could not retrieve state.");
 
     // Signals
     // Directory within which files a looked for.
@@ -53,10 +56,13 @@ pub fn ImportScreen() -> impl IntoView {
 
     // Files selected by the user.
     // Retrieve added files from state
-    let added_files = state.added_files;
+    let lazy_files = state.lazy_files;
 
     // List of all eligible files.
     let eligible_files: RwSignal<Vec<String>> = RwSignal::new(vec!["Loading...".to_string()]);
+
+    // Index selected from suggestions
+    let selected_index: RwSignal<Option<usize>> = RwSignal::new(None);
 
     // User input
     let user_input_value: RwSignal<String> = RwSignal::new(String::new());
@@ -69,7 +75,7 @@ pub fn ImportScreen() -> impl IntoView {
         current_directory.set(dir);
 
         // Available files.
-        let directory = &current_directory.get_untracked();
+        let directory = &current_directory.get();
         let files = fetch_eligible_files(directory)
             .await
             .expect("Unable to retrieve files.");
@@ -80,26 +86,57 @@ pub fn ImportScreen() -> impl IntoView {
     let update_user_input_value = move |ev| {
         let v = event_target_value(&ev);
         user_input_value.set(v);
+        selected_index.set(None);
     };
 
     // File suggestions
+    // FIXME Added take(10) here? Rather than in the show logic? Should speed-up?
     let filtered_files = Signal::derive(move || {
         let query = user_input_value.get().to_lowercase();
         eligible_files
             .get()
             .iter()
             .filter(|name| name.to_lowercase().contains(&query))
+            .take(10)
             .cloned()
             .collect::<Vec<_>>()
     });
 
-    let tab_autocomplete = move |ev: KeyboardEvent| {
-        if ev.key() == "Tab" {
+    let keyboard_navigation = move |ev: KeyboardEvent| {
+        let key = ev.key();
+
+        let total_selections = filtered_files.get().len();
+        let current_selection = selected_index.get();
+
+        if key == "ArrowRight" {
             ev.prevent_default();
             ev.stop_propagation();
-            if let Some(first_suggestion) = filtered_files.get().first() {
-                user_input_value.set(first_suggestion.to_string())
+
+            if let Some(index) = current_selection {
+                if let Some(selection) = filtered_files.get().get(index) {
+                    user_input_value.set(selection.to_string())
+                }
             }
+        }
+
+        if key == "ArrowDown" {
+            ev.prevent_default();
+            ev.stop_propagation();
+            let new_index = Some(match current_selection {
+                Some(i) => (i + 1) % total_selections,
+                None => 0,
+            });
+            selected_index.set(new_index);
+        }
+
+        if key == "ArrowUp" {
+            ev.prevent_default();
+            ev.stop_propagation();
+            let new_index = Some(match current_selection {
+                Some(0) | None => total_selections.saturating_sub(1),
+                Some(i) => (i - 1) % total_selections,
+            });
+            selected_index.set(new_index);
         }
     };
 
@@ -121,10 +158,10 @@ pub fn ImportScreen() -> impl IntoView {
 
             if let Ok(value) = from_value::<bool>(exists) {
                 if value {
-                    let mut files = added_files.get_untracked();
+                    let mut files = lazy_files.get();
                     if !files.contains(&trimmed_input) {
                         files.push(trimmed_input.clone());
-                        added_files.set(files);
+                        lazy_files.set(files);
                     }
                     user_input_value.set(String::new());
                 }
@@ -133,44 +170,73 @@ pub fn ImportScreen() -> impl IntoView {
     };
 
     view! {
-        <div class="import-wrapper">
+        <div>
             //<!-- Left side: form and suggestions -->
-            <div class="import-left">
+            <div>
                 <h2>"Import"</h2>
-                <p>{ move || current_directory.get().to_string() }</p>
+                <p>"Starting typing to update the suggestions."</p>
+                <p>"Use the up and down arrows to navigate the suggestions, and the right arrow to select a suggestion."</p>
 
                 <form on:submit=on_submit>
                     <input
-                        style="width: 400px;"
-                        placeholder="Enter relative path ..."
+                        class="styled-input"
+                        node_ref=input_ref
+                        placeholder="Enter file name ..."
                         prop:value=user_input_value
                         on:input=update_user_input_value
-                        on:keydown=tab_autocomplete
+                        on:keydown=keyboard_navigation
                     />
-                    <button class="right-panel-button" type="submit">"Import"</button>
+                    <button class="menu-button" type="submit">"Load file"</button>
                 </form>
 
                 <div class="suggestions-box">
+
                     {move || {
-                        filtered_files.get().iter().take(10).map(|item| {
+                        let filtered = filtered_files.get();
+                        let items = filtered.iter().enumerate().map(|(i, item)| {
+                            let is_selected = selected_index.get() == Some(i);
                             view! {
-                                <div class="suggestion-item">{item.clone()}</div>
+                                <div class="suggestion-item" class:selected={is_selected}>{item.clone()}</div>
                             }
-                        }).collect::<Vec<_>>()
+                        }).collect::<Vec<_>>();
+
+                        if items.is_empty() {
+                            view! {
+                                <div class="suggestion-item" style="opacity: 0.5;">"No matches found."</div>
+                            }.into_any()
+                        } else {
+                            view! { <>{items}</> }.into_any()
+                        }
                     }}
+
                 </div>
             </div>
 
             //<!-- Right side: list of imported files -->
-            <div class="import-right">
+            <div>
                 <h3>"Imported Files"</h3>
-                <ul>
-                    {move || added_files.get().iter().map(|file| {
-                        view! { <li>{file.clone()}</li> }
-                    }).collect::<Vec<_>>()}
-                </ul>
-            </div>
 
+                <div class="imported-file-list">
+                    {move || lazy_files.get().iter().enumerate().map(|(index, file)| {
+                        let file_name = file.clone();
+                        let on_delete = {
+                            move |_| {
+                                let mut files = lazy_files.get();
+                                    files.remove(index);
+                                    lazy_files.set(files);
+                            }
+                        };
+
+                        view! {
+                            <div class="imported-file-item">
+                                <span class="file-name">{file_name}</span>
+                                <button class="delete-button" title="Remove file" on:click=on_delete> "remove" </button>
+                                //"❌"
+                            </div>
+                        }
+                    }).collect::<Vec<_>>()}
+                </div>
+            </div>
         </div>
     }
 }

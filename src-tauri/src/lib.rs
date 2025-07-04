@@ -10,7 +10,7 @@ pub fn run() {
             validate_file_exists,
             get_current_directory,
             get_list_of_files,
-            read_csv_file,
+            read_csv_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running 'no-eagles'");
@@ -73,6 +73,7 @@ fn get_list_of_files(directory: &str) -> Result<Vec<String>, String> {
 
     Ok(collected_files)
 }
+
 /*
 #[tauri::command]
 fn get_list_of_files(directory: &str) -> Result<Vec<String>, String> {
@@ -94,21 +95,54 @@ fn get_list_of_files(directory: &str) -> Result<Vec<String>, String> {
         Err(e) => Err(format!("Failed to read directory: {e}")),
     }
 }
-    */
+*/
 
 #[tauri::command]
-fn read_csv_file(file_path: &str) -> Result<Vec<Vec<String>>, String> {
-    println!("Hello");
-    let file = fs::File::open(file_path).map_err(|e| e.to_string())?;
+fn read_csv_file(directory: &str) -> Result<Vec<Vec<String>>, String> {
+    let start_row = 8;
+    let end_row = 38;
+    let elements = [0, 1, 5, 7, 8, 9, 12];
+
+    let file = fs::File::open(directory).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
 
-    let mut lines = reader.lines();
+    let lines = reader.lines();
 
-    // Skip header (or keep it if you want)
-    let _header = lines
-        .next()
-        .ok_or("CSV file is empty")?
-        .map_err(|e| e.to_string())?;
+    let mut records = Vec::new();
+
+    for (i, line) in lines.enumerate() {
+        let line = line.map_err(|e| e.to_string())?;
+
+        // Skip lines outside the desired row range
+        let line_num = i + 1; // 1-based indexing
+        if line_num < start_row || line_num > end_row {
+            continue;
+        }
+
+        let fields: Vec<String> = line
+            .trim()
+            .split(',')
+            .map(|f| f.trim().to_string())
+            .collect();
+
+        // Keep only the selected columns
+        let filtered_fields: Vec<String> = elements
+            .iter()
+            .filter_map(|&idx| fields.get(idx).cloned())
+            .collect();
+
+        records.push(filtered_fields);
+    }
+
+    Ok(records)
+}
+/*
+#[tauri::command]
+fn read_csv_file(directory: &str) -> Result<Vec<Vec<String>>, String> {
+    let file = fs::File::open(directory).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+
+    let lines = reader.lines();
 
     let mut records = Vec::new();
 
@@ -125,3 +159,4 @@ fn read_csv_file(file_path: &str) -> Result<Vec<Vec<String>>, String> {
 
     Ok(records)
 }
+*/

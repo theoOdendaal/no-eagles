@@ -36,7 +36,7 @@ body:focus {
 
 .menu-button {
   display: block;
-  width: 100%;
+  width: 200px;
   padding: 0.4em 0.8em;
   font-size: 0.85rem;
   border-radius: 6px;
@@ -46,6 +46,7 @@ body:focus {
   outline: none;
   text-align: left;
 }
+
 
 .menu-button:hover {
   background-color: #ff6f1f;
@@ -84,4 +85,129 @@ body:focus {
   border: none;
   outline: none;
   text-align: left;
+}
+
+/* src/screens/import */
+
+/* Left */
+.suggestions-box {
+  background-color: #1e1e1e;
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+  max-height: 330px;
+  min-height: 330px;
+  overflow-y: auto;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.suggestion-item {
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.suggestion-item:hover {
+  background-color: #2a2a2a;
+}
+
+.suggestion-item.selected {
+  background: linear-gradient(90deg, #2a2a2a 0%, #1e1e1e 100%);
+  color: #e29557;
+}
+
+.styled-input {
+  width: 100%;
+  max-width: 500px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  background-color: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.styled-input:focus {
+  border-color: #e29557;
+  box-shadow: 0 0 0 2px rgba(226, 149, 87, 0.2);
+}
+
+/* Right */
+
+.imported-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.imported-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #1e1e1e;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+}
+
+.imported-file-item:hover {
+  background-color: #2a2a2a;
+}
+
+.file-name {
+  color: #e29557;
+}
+
+.delete-button {
+  background: none;
+  border: none;
+  color: #ff6f1f;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  transition: color 0.2s ease;
+}
+
+.delete-button:hover {
+  color: #ff3b1f;
+}
+
+.delete-button:focus {
+  outline: none;
+}
+
+
+/* Temporary dev styles */
+.config-screen {
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+
+.new-race-form {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.race-card {
+  background-color: #1e1e1e;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.race-card h3 {
+  margin: 0 0 0.5rem 0;
+  color: #e29557;
 }
