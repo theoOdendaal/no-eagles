@@ -2,6 +2,7 @@ html,
 body,
 #app,
 .app-container {
+  font-family: 'Inter', sans-serif;
   margin: 0;
   padding: 0;
   border: none;
@@ -83,31 +84,4 @@ body:focus {
   border: none;
   outline: none;
   text-align: left;
-}
-
-/* app/import suggestions*/
-.suggestions-box {
-  position: absolute;
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  max-height: 200px;
-  overflow-y: auto;
-  width: 300px;
-  z-index: 10;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-  margin-top: 4px;
-}
-
-.suggestion-item {
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  color: #e0e0e0;
-  font-size: 0.85rem;
-  transition: background-color 0.2s;
-}
-
-.suggestion-item:hover {
-  background-color: #2a2a2a;
-  color: #ffffff;
 }

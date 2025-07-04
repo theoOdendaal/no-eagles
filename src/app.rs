@@ -4,27 +4,50 @@ use crate::screens;
 use screens::configuration::ConfigurationScreen;
 use screens::home::HomeScreen;
 use screens::import::ImportScreen;
-use screens::not_found::NotFoundScreen;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub added_files: RwSignal<Vec<String>>,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            added_files: RwSignal::new(Vec::new()),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum AppScreens {
+    Home,
+    Import,
+    Configuration,
+}
 
 #[component]
 pub fn App() -> impl IntoView {
-    let current_screen = RwSignal::new("home".to_string());
+    let app_state = AppState::new();
+    provide_context(app_state);
+
+    let current_screen = RwSignal::new(AppScreens::Home);
     view! {
         <div class="app-container">
             <div class="left-panel">
-                <button class="menu-button" on:click=move |_| current_screen.set("home".to_string())>"Home"</button>
-                <button class="menu-button" on:click=move |_| current_screen.set("configuration".to_string())>"Configuration"</button>
-                <button class="menu-button" on:click=move |_| current_screen.set("import".to_string())>"Import"</button>
+                <button class="menu-button" on:click=move |_| current_screen.set(AppScreens::Home)>"Home"</button>
+                <button class="menu-button" on:click=move |_| current_screen.set(AppScreens::Import)>"Import"</button>
+                <button class="menu-button" on:click=move |_| current_screen.set(AppScreens::Configuration)>"Configuration"</button>
+
             </div>
 
             <div class="right-panel">
                 {
                     move || {
-                        match current_screen.get().as_str() {
-                            "home" => view! { <HomeScreen /> }.into_any(),
-                            "configuration" => view! { <ConfigurationScreen /> }.into_any(),
-                            "import" => view! { <ImportScreen /> }.into_any(),
-                            _ => view! { <NotFoundScreen /> }.into_any(),
+                        match current_screen.get() {
+                            AppScreens::Home => view! { <HomeScreen /> }.into_any(),
+                            AppScreens::Import => view! { <ImportScreen /> }.into_any(),
+                            AppScreens::Configuration => view! { <ConfigurationScreen /> }.into_any(),
+
                         }
                     }
                 }

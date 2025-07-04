@@ -1,10 +1,13 @@
-use std::path::PathBuf;
-
+use leptos::ev::{KeyboardEvent, SubmitEvent};
+use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
+
+use thiserror::Error;
+
+use crate::app::AppState;
 
 #[wasm_bindgen]
 extern "C" {
@@ -12,56 +15,77 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 }
 
-#[derive(Serialize, Deserialize)]
-struct ListFilesArgs<'a> {
-    directory: &'a str,
+#[derive(Error, Debug)]
+pub enum ImportError {
+    #[error("Serde wasm bindgen error: {0}")]
+    SerdeWasm(#[from] serde_wasm_bindgen::Error),
 }
 
 #[derive(Serialize, Deserialize)]
-struct ReadFileContentArgs<'a> {
-    file_path: &'a str,
+struct DirectoryArgs<'a> {
+    directory: &'a str,
+}
+
+async fn fetch_current_directory() -> Result<String, ImportError> {
+    /*
+    let dir = invoke("get_current_directory", JsValue::NULL).await;
+    let value = from_value::<String>(dir)?;
+    Ok(value)
+    */
+    // FIXME, im just manually setting the directory for now. In the future, the home directory should be changed in "Configuration".
+    Ok("C:/Users/TheoOdendaal/source/repos/no-eagles".to_string())
+}
+
+async fn fetch_eligible_files(directory: &str) -> Result<Vec<String>, ImportError> {
+    let args = serde_wasm_bindgen::to_value(&DirectoryArgs { directory }).unwrap();
+    let new_available_files: JsValue = invoke("get_list_of_files", args).await;
+    let value = from_value::<Vec<String>>(new_available_files)?;
+    Ok(value)
 }
 
 #[component]
 pub fn ImportScreen() -> impl IntoView {
+    let state = use_context::<AppState>().expect("Could not retrieve state.");
+
+    // Signals
+    // Directory within which files a looked for.
     let current_directory = RwSignal::new(String::from("Loading..."));
-    let available_files: RwSignal<Vec<String>> =
-        RwSignal::new(vec!["No files found...".to_string()]);
+
+    // Files selected by the user.
+    // Retrieve added files from state
+    let added_files = state.added_files;
+
+    // List of all eligible files.
+    let eligible_files: RwSignal<Vec<String>> = RwSignal::new(vec!["Loading...".to_string()]);
+
+    // User input
+    let user_input_value: RwSignal<String> = RwSignal::new(String::new());
 
     spawn_local(async move {
-        // Display the current directory below the heading.
-        let new_directory = invoke("get_current_directory", JsValue::NULL)
+        // Determine current directory.
+        let dir = fetch_current_directory()
             .await
-            .as_string()
-            .unwrap_or_else(|| "Failed to get directory.".to_string());
-        current_directory.set(new_directory);
-        // FIXME, im just manually setting the directory for now. In the future, the home directory should be changed in "Configuration".
-        current_directory.set("C:/Users/TheoOdendaal/source/repos/no-eagles".to_string());
+            .unwrap_or_else(|_| "Failed to retrieve current directory.".to_string());
+        current_directory.set(dir);
 
         // Available files.
         let directory = &current_directory.get_untracked();
-        let args = serde_wasm_bindgen::to_value(&ListFilesArgs { directory }).unwrap();
-        let new_available_files: JsValue = invoke("get_list_of_files", args).await;
-        match from_value::<Vec<String>>(new_available_files) {
-            Ok(data) => {
-                available_files.set(data);
-            }
-            Err(e) => available_files.set(vec![e.to_string()]),
-        }
+        let files = fetch_eligible_files(directory)
+            .await
+            .expect("Unable to retrieve files.");
+        eligible_files.set(files);
     });
 
     // File name input box.
-    let file_name: RwSignal<String> = RwSignal::new(String::new());
-
-    let update_file_name = move |ev| {
+    let update_user_input_value = move |ev| {
         let v = event_target_value(&ev);
-        file_name.set(v);
+        user_input_value.set(v);
     };
 
     // File suggestions
     let filtered_files = Signal::derive(move || {
-        let query = file_name.get().to_lowercase();
-        available_files
+        let query = user_input_value.get().to_lowercase();
+        eligible_files
             .get()
             .iter()
             .filter(|name| name.to_lowercase().contains(&query))
@@ -69,70 +93,84 @@ pub fn ImportScreen() -> impl IntoView {
             .collect::<Vec<_>>()
     });
 
-    // Read current file_name.
-    let file_content: RwSignal<Vec<Vec<String>>> = RwSignal::new(Vec::new());
-    let selected_file: RwSignal<String> = RwSignal::new(String::new());
-    let selected_file_exists: RwSignal<bool> = RwSignal::new(false);
+    let tab_autocomplete = move |ev: KeyboardEvent| {
+        if ev.key() == "Tab" {
+            ev.prevent_default();
+            ev.stop_propagation();
+            if let Some(first_suggestion) = filtered_files.get().first() {
+                user_input_value.set(first_suggestion.to_string())
+            }
+        }
+    };
 
-    let update_file_content = move |ev: SubmitEvent| {
+    let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
+        let current_input = user_input_value.get();
+        let trimmed_input = current_input.trim().to_string();
+        if trimmed_input.is_empty() {
+            return;
+        }
+
         spawn_local(async move {
-            let file_path_buf = PathBuf::from(current_directory.get());
-            let file_path_buf = file_path_buf.join(file_name.get());
-            let file_path = &file_path_buf.to_string_lossy().to_string();
-            selected_file.set(file_path.to_string());
+            let args = serde_wasm_bindgen::to_value(&DirectoryArgs {
+                directory: &trimmed_input,
+            })
+            .unwrap();
 
-            selected_file_exists.set(file_path_buf.exists());
+            let exists = invoke("validate_file_exists", args).await;
 
-            let args = serde_wasm_bindgen::to_value(&ReadFileContentArgs { file_path }).unwrap();
-            let new_file_content: JsValue = invoke("read_csv_file", args).await;
-            match from_value::<Vec<Vec<String>>>(new_file_content) {
-                Ok(data) => {
-                    file_content.set(data);
+            if let Ok(value) = from_value::<bool>(exists) {
+                if value {
+                    let mut files = added_files.get_untracked();
+                    if !files.contains(&trimmed_input) {
+                        files.push(trimmed_input.clone());
+                        added_files.set(files);
+                    }
+                    user_input_value.set(String::new());
                 }
-                // FIXME, better error handling.
-                Err(_) => file_content.set(Vec::new()),
             }
         });
     };
 
     view! {
-            <div>
+        <div class="import-wrapper">
+            //<!-- Left side: form and suggestions -->
+            <div class="import-left">
                 <h2>"Import"</h2>
-                <p> { move || current_directory.get().to_string() } </p>
+                <p>{ move || current_directory.get().to_string() }</p>
+
+                <form on:submit=on_submit>
+                    <input
+                        style="width: 400px;"
+                        placeholder="Enter relative path ..."
+                        prop:value=user_input_value
+                        on:input=update_user_input_value
+                        on:keydown=tab_autocomplete
+                    />
+                    <button class="right-panel-button" type="submit">"Import"</button>
+                </form>
+
+                <div class="suggestions-box">
+                    {move || {
+                        filtered_files.get().iter().take(10).map(|item| {
+                            view! {
+                                <div class="suggestion-item">{item.clone()}</div>
+                            }
+                        }).collect::<Vec<_>>()
+                    }}
+                </div>
             </div>
 
-
-            <form on:submit=update_file_content>
-                <input style="width: 300px;" placeholder="Enter relative path ..." on:input=update_file_name/>
-                <button class="right-panel-button" type="submit">"Import"</button>
-                <p> { move || file_name.get() } </p>
-            </form>
-
-            <p> {move || selected_file.get() } </p>
-            <p> {move || selected_file_exists.get() } </p>
-
-            <Show when=move || !file_name.get().is_empty()>
-            <div class="suggestions-box">
-                {move || {
-                    filtered_files.get().iter().take(10).map(|item| {
-                        view! {
-                            <div class="suggestion-item">{item.clone()}</div>
-                        }
-                    }).collect::<Vec<_>>()
-                }}
-            </div>
-            </Show>
-
-            <div>
-            {move || {
-                    file_content.get().iter().map(|item| {
-                        view! {
-                            <div class="suggestion-item"> { item.join(" ").to_string()} </div>
-                        }
-                    }).collect::<Vec<_>>()
-                }}
+            //<!-- Right side: list of imported files -->
+            <div class="import-right">
+                <h3>"Imported Files"</h3>
+                <ul>
+                    {move || added_files.get().iter().map(|file| {
+                        view! { <li>{file.clone()}</li> }
+                    }).collect::<Vec<_>>()}
+                </ul>
             </div>
 
+        </div>
     }
 }
